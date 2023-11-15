@@ -1,0 +1,45 @@
+---
+
+# every req should be matched against every epp (if optional path matches)
+# and be tested with every type defined in epp block
+# resulting in a per req context with information about the epp
+
+# problem would be extended information in a JWT
+
+epp:
+  protectors:
+    - name: basic             # protector name - used in endpoint config block
+      type: basic
+      credentials:
+        - username: user1     # username
+          password: "asdf"    # value (plain or hashed)
+          hashed: "md5"       # optional or md5,sha1,sha256
+
+    - name: apikey            # protector name - used in endpoint config block
+      type: apikey
+      keys:
+        - name: x-apikey      # http header name to use
+          hashed: "sha256"    # optional or md5,sha1,sha256
+          value: "asdf"       # value (plain or hashed)
+
+#    - name: ip
+#      type: ip
+#      addresses:
+#        - 12.34.56.78/8
+
+#    - name: bearer
+#      type: bearer
+#      jwks_url: [issuer-url]/jwks.json
+#      claim_validation:
+#        issuer: 'value1'
+#        audience: 'value2'
+
+  endpoints:
+    - path: ...               # regex / optional
+      protected_by:
+        - basic
+        - apikey
+      acls:
+        - USER_DEFINED_STRING_VALUE
+        - AS
+        - ARRAY
