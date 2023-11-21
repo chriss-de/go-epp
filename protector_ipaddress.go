@@ -5,6 +5,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"net"
 	"net/http"
+	"strings"
 )
 
 type IPAddressProtector struct {
@@ -50,12 +51,14 @@ func (p *IPAddressProtector) GetType() string {
 	return p.Type
 }
 
-func (p *IPAddressProtector) Validate(r *http.Request) (ProtectorInfo, error) {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return nil, err
+func (p *IPAddressProtector) Validate(r *http.Request) (pi ProtectorInfo, err error) {
+	remoteAddr := r.RemoteAddr
+	if strings.Contains(remoteAddr, ":") {
+		if remoteAddr, _, err = net.SplitHostPort(r.RemoteAddr); err != nil {
+			return nil, err
+		}
 	}
-	clientIp := net.ParseIP(ip)
+	clientIp := net.ParseIP(remoteAddr)
 	if clientIp == nil {
 		return nil, fmt.Errorf("clientIp is invalid")
 	}
