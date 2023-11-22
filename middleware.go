@@ -35,11 +35,6 @@ func Middleware(next http.Handler) http.Handler {
 					} else {
 						logger.Error(err)
 					}
-					//else {
-					//	println(err)
-					//	// TODO: send correct 401 (plain,json, user error)
-					//	return
-					//}
 				}
 			}
 		}
@@ -52,19 +47,13 @@ func Middleware(next http.Handler) http.Handler {
 			_, _ = fmt.Fprintf(os.Stdout, "] ; ACLs: %+v \n", eppInfo.ACLs)
 		}
 
-		ctx := newContextWithEppInfo(r.Context(), eppInfo) // this info dang
+		ctx := context.WithValue(r.Context(), eppCtxKey, eppInfo)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// newContextWithEppInfo saves token claims into request ctx for later usage
-func newContextWithEppInfo(ctx context.Context, i *Info) context.Context {
-	ctx = context.WithValue(ctx, eppCtxKey, i)
-	return ctx
-}
-
-// EppInfoFromContext restores AppClaims from ctx
-func EppInfoFromContext(ctx context.Context) (i *Info, err error) {
+// InfoFromContext restores epp info from ctx
+func InfoFromContext(ctx context.Context) (i *Info, err error) {
 	var ok bool
 
 	if i, ok = ctx.Value(eppCtxKey).(*Info); !ok {

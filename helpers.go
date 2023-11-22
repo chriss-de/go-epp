@@ -7,7 +7,7 @@ import (
 )
 
 func HasACL(ctx context.Context, acl string) bool {
-	epp, err := EppInfoFromContext(ctx)
+	epp, err := InfoFromContext(ctx)
 	if err != nil {
 		logger.Error(err)
 	}
@@ -30,8 +30,23 @@ func NeedACL(acl string, func401 func(http.ResponseWriter, *http.Request)) func(
 	}
 }
 
+func GetValueFromToken(ctx context.Context, key string) (any, error) {
+	epp, err := InfoFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range epp.Infos {
+		switch pbi := p.(type) {
+		case *BearerProtectorInfo:
+			return pbi.GetValueFromToken(key), nil
+		}
+	}
+
+	return nil, fmt.Errorf("no token in request")
+}
+
 func GetStringFromToken(ctx context.Context, key string) (string, error) {
-	epp, err := EppInfoFromContext(ctx)
+	epp, err := InfoFromContext(ctx)
 	if err != nil {
 		return "", err
 	}

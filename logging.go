@@ -7,7 +7,6 @@ import (
 
 type Logger interface {
 	Error(v ...interface{})
-	Warning(v ...interface{})
 	Info(v ...interface{})
 }
 
@@ -29,10 +28,6 @@ func (l *DefaultLogger) parseLog(v ...interface{}) string {
 
 func (l *DefaultLogger) Error(v ...interface{}) {
 	_, _ = fmt.Fprint(os.Stderr, "ERR: ", l.parseLog(v...))
-}
-
-func (l *DefaultLogger) Warning(v ...interface{}) {
-	_, _ = fmt.Fprint(os.Stdout, "WRN: ", l.parseLog(v...))
 }
 
 func (l *DefaultLogger) Info(v ...interface{}) {

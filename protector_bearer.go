@@ -7,6 +7,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -16,11 +17,13 @@ type bearerMetaData struct {
 }
 
 type ClaimValidation struct {
-	Key      string `mapstructure:"key"`
-	Type     string `mapstructure:"type"`
-	Value    string `mapstructure:"value"`
-	Length   int    `mapstructure:"length"`
-	Contains string `mapstructure:"contains"`
+	Key      string  `mapstructure:"key"`
+	Type     *string `mapstructure:"type"`
+	Value    any     `mapstructure:"value"`
+	Length   *int    `mapstructure:"length"`
+	Contains *string `mapstructure:"contains"`
+	//GreaterThan *int    `mapstructure:"gt"`
+	//LessThan    *int    `mapstructure:"lt"`
 }
 
 type BearerProtector struct {
@@ -57,7 +60,17 @@ func NewBearerProtector(name string, config map[string]interface{}, bkm *BearerK
 		return nil, fmt.Errorf("need meta_url OR jwks_url")
 	}
 	if protector.MetaUrl != "" && protector.JwksUrl != "" {
-		logger.Warning("prefer meta_url over jwks_url")
+		logger.Info("prefer meta_url over jwks_url")
+	}
+
+	// validation sanity check
+	for _, cv := range protector.ClaimsValidations {
+		if cv.Key == "" {
+			return nil, fmt.Errorf("claim validation needs a key")
+		}
+		if cv.Value == nil && cv.Type == nil && cv.Contains == nil && cv.Length == nil {
+			return nil, fmt.Errorf("need at least one validation check")
+		}
 	}
 
 	if protector.MetaUrl != "" {
@@ -119,10 +132,50 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 			v := getFromToken(cv.Key, tokenClaims)
 			switch typedValue := v.(type) {
 			case string:
-				if typedValue != cv.Value {
-					return nil, fmt.Errorf("invalid claim for '%s'", cv.Value)
+				if cv.Value != nil && typedValue != cv.Value {
+					return nil, errorMessage(cv.Key, "value")
+				}
+				if cv.Length != nil && len(typedValue) != *cv.Length {
+					return nil, errorMessage(cv.Key, "length")
+				}
+				if cv.Type != nil && *cv.Type != "string" {
+					return nil, errorMessage(cv.Key, "type")
+				}
+				if cv.Contains != nil && strings.Contains(typedValue, *cv.Contains) {
+					return nil, errorMessage(cv.Key, "contains")
+				}
+			case int, int8, int16, int32, int64, float32, float64:
+				if cv.Value != nil && typedValue != cv.Value {
+					return nil, errorMessage(cv.Key, "value")
+				}
+				if cv.Type != nil && *cv.Type != "number" {
+					return nil, errorMessage(cv.Key, "type")
+				}
+				//if cv.GreaterThan != nil && typedValue.(float64) <= (*cv.GreaterThan).(float64) {
+				//	return nil, errorMessage(cv.Key, "gt")
+				//}
+				//if cv.LessThan != nil && typedValue >= *cv.LessThan {
+				//	return nil, errorMessage(cv.Key, "lt")
+				//}
+			case []interface{}:
+				if cv.Length != nil && len(typedValue) != *cv.Length {
+					return nil, errorMessage(cv.Key, "length")
+				}
+				if cv.Type != nil && *cv.Type != "array" {
+					return nil, errorMessage(cv.Key, "type")
+				}
+				if cv.Contains != nil {
+					// convert to []string
+					var tokenValues = make([]string, len(typedValue))
+					for idx := range typedValue {
+						tokenValues[idx] = fmt.Sprint(typedValue[idx])
+					}
+					if !slices.Contains(tokenValues, *cv.Contains) {
+						return nil, errorMessage(cv.Key, "contains")
+					}
 				}
 			}
+
 		}
 
 		bpi := &BearerProtectorInfo{protector: p, TokenClaims: tokenClaims, Token: token}
@@ -174,12 +227,16 @@ func (b *BearerProtectorInfo) GetStringFromToken(key string) string {
 	return ""
 }
 
+func (b *BearerProtectorInfo) GetValueFromToken(key string) any {
+	return getFromToken(key, b.TokenClaims)
+}
+
 func getFromToken(key string, t map[string]interface{}) interface{} {
-	keySplitted := strings.Split(key, ".")
-	for _, keyPart := range keySplitted {
+	sKey := strings.Split(key, ".")
+	for _, keyPart := range sKey {
 		v, exists := t[keyPart]
 		switch {
-		case exists && len(keySplitted) == 1:
+		case exists && len(sKey) == 1:
 			return v
 		case !exists:
 			return nil
@@ -189,6 +246,10 @@ func getFromToken(key string, t map[string]interface{}) interface{} {
 		}
 	}
 	return nil
+}
+
+func errorMessage(key string, t string) error {
+	return fmt.Errorf("invalid claim for '%s' - %s", key, t)
 }
 
 func (b *BearerProtectorInfo) GetName() string {
