@@ -17,13 +17,14 @@ import (
 )
 
 type bearerSignKey struct {
-	Kty string   `json:"kty"`
-	Use string   `json:"use"`
-	Kid string   `json:"kid"`
-	N   string   `json:"n"`
-	E   string   `json:"e"`
-	X5t string   `json:"x5t"`
-	X5c []string `json:"x5c"`
+	Kty       string   `json:"kty"`
+	Use       string   `json:"use"`
+	Kid       string   `json:"kid"`
+	N         string   `json:"n"`
+	E         string   `json:"e"`
+	X5t       string   `json:"x5t"`
+	X5c       []string `json:"x5c"`
+	publicKey *rsa.PublicKey
 }
 
 type JwksUrlResponse struct {
@@ -62,11 +63,7 @@ func (bkm *BearerKeyManager) AddKeyFetch(k *KeyFetch) error {
 	}
 
 	// queue fetch after interval - time.AfterFunc(k.Interval)
-	time.AfterFunc(k.Interval, func() {
-		if err := bkm.fetchKeys(k.Name); err != nil {
-			logger.Error(err)
-		}
-	})
+	bkm.queueNewFetch(k)
 
 	return nil
 }
@@ -116,20 +113,25 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 	}
 
 	keyFetch.keys = newKeys.Keys
-	for _, key := range keyFetch.keys {
+	for idx, key := range keyFetch.keys {
+		keyFetch.keys[idx].publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
 		bkm.keysMap[key.Kid] = &key
 	}
 	bkm.keysMapLck.Unlock()
 
 	// queue fetch after interval - time.AfterFunc(k.Interval)
-	time.AfterFunc(keyFetch.Interval, func() {
-		logger.Info("interval", keyFetch.Interval, "Queue new fetch")
-		if err = bkm.fetchKeys(keyFetch.Name); err != nil {
+	bkm.queueNewFetch(keyFetch)
+
+	return nil
+}
+
+func (bkm *BearerKeyManager) queueNewFetch(k *KeyFetch) {
+	logger.Info("interval", k.Interval, "Queuing new fetch")
+	time.AfterFunc(k.Interval, func() {
+		if err := bkm.fetchKeys(k.Name); err != nil {
 			logger.Error(err)
 		}
 	})
-
-	return nil
 }
 
 // getSignatureKey returns public key to validate token signature
@@ -158,7 +160,10 @@ func (bkm *BearerKeyManager) getSignatureKey(token *jwt.Token) (out interface{},
 		}
 	}
 
-	publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
+	publicKey = key.publicKey
+	if publicKey == nil {
+		publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
+	}
 
 	return publicKey, nil
 }
