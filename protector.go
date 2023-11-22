@@ -43,7 +43,10 @@ func initProtectors(cfgProtectors []configProtector) (err error) {
 				return err
 			}
 		case protector.Type == "bearer":
-			if eppProtector, err = NewBearerProtector(protector.Name, protector.Config); err != nil {
+			if bearerKeyManager == nil {
+				bearerKeyManager = NewBearerKeyManager()
+			}
+			if eppProtector, err = NewBearerProtector(protector.Name, protector.Config, bearerKeyManager); err != nil {
 				return err
 			}
 		}

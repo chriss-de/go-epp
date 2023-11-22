@@ -1,17 +1,11 @@
 package epp
 
 import (
-	"bytes"
-	"crypto"
-	"crypto/rsa"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mitchellh/mapstructure"
 	"io"
-	"math/big"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,16 +14,6 @@ import (
 
 type bearerMetaData struct {
 	JwksUri string `json:"jwks_uri"`
-}
-
-type bearerSignKey struct {
-	Kty string   `json:"kty"`
-	Use string   `json:"use"`
-	Kid string   `json:"kid"`
-	N   string   `json:"n"`
-	E   string   `json:"e"`
-	X5t string   `json:"x5t"`
-	X5c []string `json:"x5c"`
 }
 
 type BearerProtector struct {
@@ -51,7 +35,7 @@ type BearerProtectorInfo struct {
 }
 
 // NewBearerProtector initialize
-func NewBearerProtector(name string, config map[string]interface{}) (protector *BearerProtector, err error) {
+func NewBearerProtector(name string, config map[string]interface{}, keyMgmr *BearerKeyManager) (protector *BearerProtector, err error) {
 	if err = mapstructure.Decode(config, &protector); err != nil {
 		return nil, err
 	}
@@ -76,19 +60,11 @@ func NewBearerProtector(name string, config map[string]interface{}) (protector *
 	if protector.KeysFetchInterval == 0 {
 		protector.KeysFetchInterval = 1 * time.Hour
 	}
-	if err = protector.fetchKeys(); err != nil {
+
+	keyFetch := &KeyFetch{Name: protector.Name, KeyUrl: protector.JwksUrl, Interval: protector.KeysFetchInterval}
+	if err = keyMgmr.AddKeyFetch(keyFetch); err != nil {
 		return nil, err
 	}
-
-	go func() {
-		logger.Info("interval", protector.KeysFetchInterval.String(), "Starting background task to fetch keys from server")
-		for {
-			time.Sleep(protector.KeysFetchInterval)
-			if err = protector.fetchKeys(); err != nil {
-				logger.Error(err)
-			}
-		}
-	}()
 
 	return protector, err
 }
@@ -112,7 +88,7 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 
 	authHeaderValue := r.Header.Get("Authorization")
 	if bearerValue, found := strings.CutPrefix(authHeaderValue, "Bearer "); found {
-		if token, err = jwt.ParseWithClaims(bearerValue, &tokenClaims, p.getSignatureKey); err != nil {
+		if token, err = jwt.ParseWithClaims(bearerValue, &tokenClaims, bearerKeyManager.getSignatureKey); err != nil {
 			return nil, err
 		}
 		if token == nil {
@@ -167,95 +143,6 @@ func (p *BearerProtector) fetchMetaData() (err error) {
 	p.JwksUrl = metaData.JwksUri
 
 	return nil
-}
-
-// fetchKeys fetches keys from JwksURI
-func (p *BearerProtector) fetchKeys() (err error) {
-	var (
-		httpClient = &http.Client{Timeout: time.Second * 15}
-		request    *http.Request
-		response   *http.Response
-	)
-
-	logger.Info("oauth", p.Name, "url", p.JwksUrl, "timeout", httpClient.Timeout.String(), "Fetching new keys from server")
-
-	if request, err = http.NewRequest("GET", p.JwksUrl, nil); err != nil {
-		return err
-	}
-	if response, err = httpClient.Do(request); err != nil {
-		return err
-	}
-	if response.Body != nil {
-		defer func(Body io.ReadCloser) {
-			_ = Body.Close()
-		}(response.Body)
-	}
-	if response.StatusCode != 200 {
-		return fmt.Errorf(response.Status)
-	}
-
-	if err = json.NewDecoder(response.Body).Decode(&p); err != nil {
-		return err
-	}
-
-	// create map
-	p.keysAccessLck.Lock()
-	p.keysMap = make(map[string]int)
-	for keyIdx, key := range p.Keys {
-		p.keysMap[key.Kid] = keyIdx
-	}
-	p.keysAccessLck.Unlock()
-
-	return nil
-}
-
-// getSignatureKey returns public key to validate token signature
-func (p *BearerProtector) getSignatureKey(token *jwt.Token) (out interface{}, err error) {
-	var (
-		ok        bool
-		keyIdx    int
-		kid       string
-		x5t       string
-		publicKey crypto.PublicKey
-		key       bearerSignKey
-	)
-
-	if kid, ok = token.Header["kid"].(string); !ok {
-		return nil, fmt.Errorf("could not find 'kid' in token header")
-	}
-
-	p.keysAccessLck.RLock()
-	if keyIdx, ok = p.keysMap[kid]; !ok {
-		return nil, fmt.Errorf("could not find kid '%s' in local key cache. keys in cache: %d", kid, len(p.keysMap))
-	}
-	key = p.Keys[keyIdx]
-	p.keysAccessLck.RUnlock()
-
-	if x5t, ok = token.Header["x5t"].(string); ok {
-		if key.X5t != x5t {
-			return nil, fmt.Errorf("key mismatch at value 'x5t'")
-		}
-	}
-
-	publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
-
-	return publicKey, nil
-
-}
-
-// getPublicKeyFromModulusAndExponent gets public key from Modules and Exponent provided from JwksURI
-func getPublicKeyFromModulusAndExponent(n, e string) *rsa.PublicKey {
-	nBytes, _ := base64.RawURLEncoding.DecodeString(n)
-	eBytes, _ := base64.RawURLEncoding.DecodeString(e)
-	z := new(big.Int)
-	z.SetBytes(nBytes)
-	//decoding key.E returns a three byte slice, https://golang.org/pkg/encoding/binary/#Read and other conversions fail
-	//since they are expecting to read as many bytes as the size of int being returned (4 bytes for uint32 for example)
-	var buffer bytes.Buffer
-	buffer.WriteByte(0)
-	buffer.Write(eBytes)
-	exponent := binary.BigEndian.Uint32(buffer.Bytes())
-	return &rsa.PublicKey{N: z, E: int(exponent)}
 }
 
 func (b *BearerProtectorInfo) GetStringFromToken(key string) string {

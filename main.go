@@ -7,11 +7,12 @@ type EndpointConfig struct {
 }
 
 var (
-	config         *EndpointConfig
-	protectors     []Protector
-	endpoints      []*Endpoint
-	logger         Logger
-	protectorIdMap map[string]int
+	config           *EndpointConfig
+	protectors       []Protector
+	endpoints        []*Endpoint
+	logger           Logger
+	protectorIdMap   map[string]int
+	bearerKeyManager *BearerKeyManager
 	//endpointIdMap  map[string]int
 )
 
