@@ -18,10 +18,36 @@ func HasACL(ctx context.Context, acl string) bool {
 	return false
 }
 
+func HasACLs(ctx context.Context, acls []string) bool {
+	epp, err := InfoFromContext(ctx)
+	if err != nil {
+		logger.Error(err)
+	}
+	for _, acl := range acls {
+		if _, has := epp.ACLs[acl]; !has {
+			return false
+		}
+	}
+
+	return true
+}
+
 func NeedACL(acl string, func401 func(http.ResponseWriter, *http.Request)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 			if HasACL(r.Context(), acl) {
+				next.ServeHTTP(rw, r.WithContext(r.Context()))
+			} else {
+				func401(rw, r)
+			}
+		})
+	}
+}
+
+func NeedACLs(acls []string, func401 func(http.ResponseWriter, *http.Request)) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			if HasACLs(r.Context(), acls) {
 				next.ServeHTTP(rw, r.WithContext(r.Context()))
 			} else {
 				func401(rw, r)
