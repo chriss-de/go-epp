@@ -62,9 +62,6 @@ func (bkm *BearerKeyManager) AddKeyFetch(k *KeyFetch) error {
 		return err
 	}
 
-	// queue fetch after interval - time.AfterFunc(k.Interval)
-	bkm.queueNewFetch(k)
-
 	return nil
 }
 
