@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -16,16 +15,21 @@ type bearerMetaData struct {
 	JwksUri string `json:"jwks_uri"`
 }
 
+type ClaimValidation struct {
+	Key      string `mapstructure:"key"`
+	Type     string `mapstructure:"type"`
+	Value    string `mapstructure:"value"`
+	Length   int    `mapstructure:"length"`
+	Contains string `mapstructure:"contains"`
+}
+
 type BearerProtector struct {
-	Name              string                 `mapstructure:"name"`
-	Type              string                 `mapstructure:"type"`
-	MetaUrl           string                 `mapstructure:"meta_url"`
-	JwksUrl           string                 `mapstructure:"jwks_url"`
-	ClaimValidation   map[string]interface{} `mapstructure:"claim_validation"`
-	KeysFetchInterval time.Duration          `mapstructure:"keys_fetch_interval"`
-	Keys              []bearerSignKey        `json:"keys"`
-	keysMap           map[string]int
-	keysAccessLck     sync.RWMutex
+	Name              string            `mapstructure:"name"`
+	Type              string            `mapstructure:"type"`
+	MetaUrl           string            `mapstructure:"meta_url"`
+	JwksUrl           string            `mapstructure:"jwks_url"`
+	KeysFetchInterval time.Duration     `mapstructure:"keys_fetch_interval"`
+	ClaimsValidations []ClaimValidation `mapstructure:"claims_validations"`
 }
 
 type BearerProtectorInfo struct {
@@ -89,23 +93,34 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 	var (
 		token       *jwt.Token
 		tokenClaims = make(jwt.MapClaims)
+		typeOk      bool
+		kid         string
 		err         error
 	)
 
 	authHeaderValue := r.Header.Get("Authorization")
 	if bearerValue, found := strings.CutPrefix(authHeaderValue, "Bearer "); found {
-		if token, err = jwt.ParseWithClaims(bearerValue, &tokenClaims, bearerKeyManager.getSignatureKey); err != nil {
-			return nil, err
-		}
+		token, err = jwt.ParseWithClaims(bearerValue, &tokenClaims, bearerKeyManager.getSignatureKey)
 		if token == nil {
 			return nil, fmt.Errorf("no token")
 		}
+		if kid, typeOk = token.Header["kid"].(string); !typeOk {
+			return nil, fmt.Errorf("could not find 'kid' in token header")
+		}
+		if bearer, found := bearerKeyManager.getBearerForKid(kid); !found || bearer != p.Name {
+			// token is not for this BearerProtector - silently drop
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
 
-		for claimName, claimValue := range p.ClaimValidation {
-			if valueInToken, claimFound := tokenClaims[claimName]; claimFound {
-				// TODO: compare of array OR value in arrays OR
-				if valueInToken != claimValue {
-					return nil, fmt.Errorf("invalid claim")
+		for _, cv := range p.ClaimsValidations {
+			v := getFromToken(cv.Key, tokenClaims)
+			switch typedValue := v.(type) {
+			case string:
+				if typedValue != cv.Value {
+					return nil, fmt.Errorf("invalid claim for '%s'", cv.Value)
 				}
 			}
 		}
@@ -152,14 +167,14 @@ func (p *BearerProtector) fetchMetaData() (err error) {
 }
 
 func (b *BearerProtectorInfo) GetStringFromToken(key string) string {
-	v := b.getFromToken(key, b.TokenClaims)
+	v := getFromToken(key, b.TokenClaims)
 	if vs, ok := v.(string); ok {
 		return vs
 	}
 	return ""
 }
 
-func (b *BearerProtectorInfo) getFromToken(key string, t map[string]interface{}) interface{} {
+func getFromToken(key string, t map[string]interface{}) interface{} {
 	keySplitted := strings.Split(key, ".")
 	for _, keyPart := range keySplitted {
 		v, exists := t[keyPart]
@@ -170,7 +185,7 @@ func (b *BearerProtectorInfo) getFromToken(key string, t map[string]interface{})
 			return nil
 		default:
 			newKey, _ := strings.CutPrefix(key, keyPart+".")
-			return b.getFromToken(newKey, t)
+			return getFromToken(newKey, t)
 		}
 	}
 	return nil

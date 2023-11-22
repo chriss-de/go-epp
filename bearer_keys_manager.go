@@ -39,15 +39,17 @@ type KeyFetch struct {
 }
 
 type BearerKeyManager struct {
-	keysMap       map[string]*bearerSignKey // map with 'kid' to idx in keys for bearerSignKey
-	keysMapLck    sync.RWMutex
+	kidKeysMap    map[string]*bearerSignKey // map with 'kid' to idx in keys for bearerSignKey
+	kidIdpMap     map[string]string
+	kidMapsLck    sync.RWMutex
 	keyFetches    map[string]*KeyFetch
 	keyFetchesLck sync.Mutex
 }
 
 func NewBearerKeyManager() *BearerKeyManager {
 	return &BearerKeyManager{
-		keysMap:    make(map[string]*bearerSignKey),
+		kidKeysMap: make(map[string]*bearerSignKey),
+		kidIdpMap:  make(map[string]string),
 		keyFetches: make(map[string]*KeyFetch),
 	}
 }
@@ -104,19 +106,20 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 	}
 
 	// create map
-	bkm.keysMapLck.Lock()
+	bkm.kidMapsLck.Lock()
 	for _, oldKey := range keyFetch.keys {
-		delete(bkm.keysMap, oldKey.Kid)
+		delete(bkm.kidKeysMap, oldKey.Kid)
 	}
 
 	keyFetch.keys = make([]*bearerSignKey, len(newKeys.Keys))
 	for idx, key := range newKeys.Keys {
 		_key := key
 		_key.publicKey = getPublicKeyFromModulusAndExponent(_key.N, _key.E)
-		bkm.keysMap[_key.Kid] = &_key
+		bkm.kidKeysMap[_key.Kid] = &_key
+		bkm.kidIdpMap[_key.Kid] = keyFetch.Name
 		keyFetch.keys[idx] = &_key
 	}
-	bkm.keysMapLck.Unlock()
+	bkm.kidMapsLck.Unlock()
 
 	// queue fetch after interval - time.AfterFunc(k.Interval)
 	bkm.queueNewFetch(keyFetch)
@@ -133,6 +136,13 @@ func (bkm *BearerKeyManager) queueNewFetch(k *KeyFetch) {
 	})
 }
 
+func (bkm *BearerKeyManager) getBearerForKid(kid string) (string, bool) {
+	bkm.kidMapsLck.RLock()
+	defer bkm.kidMapsLck.RUnlock()
+	k, o := bkm.kidIdpMap[kid]
+	return k, o
+}
+
 // getSignatureKey returns public key to validate token signature
 func (bkm *BearerKeyManager) getSignatureKey(token *jwt.Token) (out interface{}, err error) {
 	var (
@@ -147,11 +157,11 @@ func (bkm *BearerKeyManager) getSignatureKey(token *jwt.Token) (out interface{},
 		return nil, fmt.Errorf("could not find 'kid' in token header")
 	}
 
-	bkm.keysMapLck.RLock()
-	if key, ok = bkm.keysMap[kid]; !ok {
-		return nil, fmt.Errorf("could not find kid '%s' in local key cache. keys in cache: %d", kid, len(bkm.keysMap))
+	bkm.kidMapsLck.RLock()
+	if key, ok = bkm.kidKeysMap[kid]; !ok {
+		return nil, fmt.Errorf("could not find kid '%s' in local key cache. keys in cache: %d", kid, len(bkm.kidKeysMap))
 	}
-	bkm.keysMapLck.RUnlock()
+	bkm.kidMapsLck.RUnlock()
 
 	if x5t, ok = token.Header["x5t"].(string); ok {
 		if key.X5t != x5t {
