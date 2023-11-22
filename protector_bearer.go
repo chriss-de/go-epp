@@ -35,8 +35,14 @@ type BearerProtectorInfo struct {
 }
 
 // NewBearerProtector initialize
-func NewBearerProtector(name string, config map[string]interface{}, keyMgmr *BearerKeyManager) (protector *BearerProtector, err error) {
-	if err = mapstructure.Decode(config, &protector); err != nil {
+func NewBearerProtector(name string, config map[string]interface{}, bkm *BearerKeyManager) (protector *BearerProtector, err error) {
+	var decoder *mapstructure.Decoder
+	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(ToTimeHookFunc()),
+		Result:     protector,
+	})
+
+	if err = decoder.Decode(config); err != nil {
 		return nil, err
 	}
 	protector.Name = name
@@ -62,7 +68,7 @@ func NewBearerProtector(name string, config map[string]interface{}, keyMgmr *Bea
 	}
 
 	keyFetch := &KeyFetch{Name: protector.Name, KeyUrl: protector.JwksUrl, Interval: protector.KeysFetchInterval}
-	if err = keyMgmr.AddKeyFetch(keyFetch); err != nil {
+	if err = bkm.AddKeyFetch(keyFetch); err != nil {
 		return nil, err
 	}
 
