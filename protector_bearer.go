@@ -84,7 +84,6 @@ func NewBearerProtector(name string, config map[string]interface{}) (protector *
 		logger.Info("interval", protector.KeysFetchInterval.String(), "Starting background task to fetch keys from server")
 		for {
 			time.Sleep(protector.KeysFetchInterval)
-			logger.Info("oauth", protector.Name, "url", protector.JwksUrl, "Fetching new keys from server")
 			if err = protector.fetchKeys(); err != nil {
 				logger.Error(err)
 			}
@@ -173,10 +172,12 @@ func (p *BearerProtector) fetchMetaData() (err error) {
 // fetchKeys fetches keys from JwksURI
 func (p *BearerProtector) fetchKeys() (err error) {
 	var (
-		httpClient = &http.Client{}
+		httpClient = &http.Client{Timeout: time.Second * 15}
 		request    *http.Request
 		response   *http.Response
 	)
+
+	logger.Info("oauth", p.Name, "url", p.JwksUrl, "timeout", httpClient.Timeout.String(), "Fetching new keys from server")
 
 	if request, err = http.NewRequest("GET", p.JwksUrl, nil); err != nil {
 		return err
@@ -255,6 +256,31 @@ func getPublicKeyFromModulusAndExponent(n, e string) *rsa.PublicKey {
 	buffer.Write(eBytes)
 	exponent := binary.BigEndian.Uint32(buffer.Bytes())
 	return &rsa.PublicKey{N: z, E: int(exponent)}
+}
+
+func (b *BearerProtectorInfo) GetStringFromToken(key string) string {
+	v := b.getFromToken(key, b.TokenClaims)
+	if vs, ok := v.(string); ok {
+		return vs
+	}
+	return ""
+}
+
+func (b *BearerProtectorInfo) getFromToken(key string, t map[string]interface{}) interface{} {
+	keySplitted := strings.Split(key, ".")
+	for _, keyPart := range keySplitted {
+		v, exists := t[keyPart]
+		switch {
+		case exists && len(keySplitted) == 1:
+			return v
+		case !exists:
+			return nil
+		default:
+			newKey, _ := strings.CutPrefix(key, keyPart+".")
+			return b.getFromToken(newKey, t)
+		}
+	}
+	return nil
 }
 
 func (b *BearerProtectorInfo) GetName() string {

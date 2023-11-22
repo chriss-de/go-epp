@@ -2,6 +2,7 @@ package epp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 )
 
@@ -28,3 +29,23 @@ func NeedACL(acl string, func401 func(http.ResponseWriter, *http.Request)) func(
 		})
 	}
 }
+
+func GetStringFromToken(ctx context.Context, key string) (string, error) {
+	epp, err := EppInfoFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range epp.Infos {
+		switch pbi := p.(type) {
+		case *BearerProtectorInfo:
+			return pbi.GetStringFromToken(key), nil
+		}
+
+	}
+
+	return "", fmt.Errorf("no token in request")
+}
+
+//func GetStringsFromToken(ctx context.Context, key string) []string {
+//
+//}
