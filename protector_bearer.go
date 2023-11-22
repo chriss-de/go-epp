@@ -164,15 +164,8 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 				if cv.Type != nil && *cv.Type != "array" {
 					return nil, errorMessage(cv.Key, "type")
 				}
-				if cv.Contains != nil {
-					// convert to []string
-					var tokenValues = make([]string, len(typedValue))
-					for idx := range typedValue {
-						tokenValues[idx] = fmt.Sprint(typedValue[idx])
-					}
-					if !slices.Contains(tokenValues, *cv.Contains) {
-						return nil, errorMessage(cv.Key, "contains")
-					}
+				if cv.Contains != nil && !slices.Contains(typedValue, cv.Contains) {
+					return nil, errorMessage(cv.Key, "contains")
 				}
 			}
 
