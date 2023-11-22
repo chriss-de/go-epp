@@ -226,7 +226,7 @@ func (p *BearerProtector) getSignatureKey(token *jwt.Token) (out interface{}, er
 
 	p.keysAccessLck.RLock()
 	if keyIdx, ok = p.keysMap[kid]; !ok {
-		return nil, fmt.Errorf("could not find 'kid' in local key cache")
+		return nil, fmt.Errorf("could not find kid '%s' in local key cache. keys in cache: %d", kid, len(p.keysMap))
 	}
 	key = p.Keys[keyIdx]
 	p.keysAccessLck.RUnlock()
