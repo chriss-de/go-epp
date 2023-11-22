@@ -37,7 +37,7 @@ type BearerKeyManager struct {
 	keysMap       map[string]*bearerSignKey // map with 'kid' to idx in keys for bearerSignKey
 	keysMapLck    sync.RWMutex
 	keyFetches    map[string]*KeyFetch
-	keyFetchesLck sync.RWMutex
+	keyFetchesLck sync.Mutex
 }
 
 func NewBearerKeyManager() *BearerKeyManager {
@@ -49,9 +49,8 @@ func NewBearerKeyManager() *BearerKeyManager {
 
 func (bkm *BearerKeyManager) AddKeyFetch(k *KeyFetch) error {
 	bkm.keyFetchesLck.Lock()
-	defer bkm.keyFetchesLck.Unlock()
-
 	bkm.keyFetches[k.Name] = k
+	bkm.keyFetchesLck.Unlock()
 
 	// fetch direct and return err
 	if err := bkm.fetchKeys(k.Name); err != nil {
@@ -77,8 +76,8 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 		keyFetch   *KeyFetch
 		found      bool
 	)
-	bkm.keyFetchesLck.RLock()
-	defer bkm.keyFetchesLck.RUnlock()
+	bkm.keyFetchesLck.Lock()
+	defer bkm.keyFetchesLck.Unlock()
 
 	if keyFetch, found = bkm.keyFetches[name]; !found {
 		return fmt.Errorf("could not find keyFetch for %s", name)
