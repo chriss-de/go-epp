@@ -26,6 +26,10 @@ type bearerSignKey struct {
 	X5c []string `json:"x5c"`
 }
 
+type JwksUrlResponse struct {
+	Keys []bearerSignKey `json:"keys"`
+}
+
 type KeyFetch struct {
 	Name     string
 	KeyUrl   string
@@ -100,9 +104,7 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 		return fmt.Errorf(response.Status)
 	}
 
-	var newKeys = struct {
-		Keys []bearerSignKey `json:"keys"`
-	}{}
+	var newKeys *JwksUrlResponse
 	if err = json.NewDecoder(response.Body).Decode(&newKeys); err != nil {
 		return err
 	}
