@@ -100,7 +100,9 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 		return fmt.Errorf(response.Status)
 	}
 
-	var newKeys = make([]bearerSignKey, 0)
+	var newKeys = struct {
+		Keys []bearerSignKey `json:"keys"`
+	}{}
 	if err = json.NewDecoder(response.Body).Decode(&newKeys); err != nil {
 		return err
 	}
@@ -111,7 +113,7 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 		delete(bkm.keysMap, oldKey.Kid)
 	}
 
-	keyFetch.keys = newKeys
+	keyFetch.keys = newKeys.Keys
 	for _, key := range keyFetch.keys {
 		bkm.keysMap[key.Kid] = &key
 	}
