@@ -111,9 +111,10 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 
 	keyFetch.keys = make([]*bearerSignKey, len(newKeys.Keys))
 	for idx, key := range newKeys.Keys {
-		key.publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
-		bkm.keysMap[key.Kid] = &key
-		keyFetch.keys[idx] = &key
+		_key := key
+		_key.publicKey = getPublicKeyFromModulusAndExponent(_key.N, _key.E)
+		bkm.keysMap[_key.Kid] = &_key
+		keyFetch.keys[idx] = &_key
 	}
 	bkm.keysMapLck.Unlock()
 

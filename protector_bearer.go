@@ -38,7 +38,7 @@ type BearerProtectorInfo struct {
 func NewBearerProtector(name string, config map[string]interface{}, bkm *BearerKeyManager) (protector *BearerProtector, err error) {
 	var decoder *mapstructure.Decoder
 	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(ToTimeHookFunc()),
+		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 		Result:     protector,
 	})
 
