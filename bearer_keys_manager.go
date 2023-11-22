@@ -35,7 +35,7 @@ type KeyFetch struct {
 	Name     string
 	KeyUrl   string
 	Interval time.Duration
-	keys     []bearerSignKey
+	keys     []*bearerSignKey
 }
 
 type BearerKeyManager struct {
@@ -109,10 +109,11 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 		delete(bkm.keysMap, oldKey.Kid)
 	}
 
-	keyFetch.keys = newKeys.Keys
-	for idx, key := range keyFetch.keys {
-		keyFetch.keys[idx].publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
+	keyFetch.keys = make([]*bearerSignKey, len(newKeys.Keys))
+	for idx, key := range newKeys.Keys {
+		key.publicKey = getPublicKeyFromModulusAndExponent(key.N, key.E)
 		bkm.keysMap[key.Kid] = &key
+		keyFetch.keys[idx] = &key
 	}
 	bkm.keysMapLck.Unlock()
 
