@@ -39,7 +39,7 @@ func NewBearerProtector(name string, config map[string]interface{}, bkm *BearerK
 	var decoder *mapstructure.Decoder
 	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
-		Result:     protector,
+		Result:     &protector,
 	})
 
 	if err = decoder.Decode(config); err != nil {
