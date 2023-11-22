@@ -21,7 +21,7 @@ type ClaimValidation struct {
 	Type     *string `mapstructure:"type"`
 	Value    any     `mapstructure:"value"`
 	Length   *int    `mapstructure:"length"`
-	Contains *string `mapstructure:"contains"`
+	Contains any     `mapstructure:"contains"`
 	//GreaterThan *int    `mapstructure:"gt"`
 	//LessThan    *int    `mapstructure:"lt"`
 }
@@ -141,7 +141,7 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 				if cv.Type != nil && *cv.Type != "string" {
 					return nil, errorMessage(cv.Key, "type")
 				}
-				if cv.Contains != nil && strings.Contains(typedValue, *cv.Contains) {
+				if cv.Contains != nil && strings.Contains(typedValue, fmt.Sprint(cv.Contains)) {
 					return nil, errorMessage(cv.Key, "contains")
 				}
 			case int, int8, int16, int32, int64, float32, float64:
