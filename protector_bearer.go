@@ -130,45 +130,48 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 
 		for _, cv := range p.ClaimsValidations {
 			v := getFromToken(cv.Key, tokenClaims)
-			switch typedValue := v.(type) {
-			case string:
-				if cv.Value != nil && typedValue != cv.Value {
-					return nil, errorMessage(cv.Key, "value")
+			if v != nil {
+				switch typedValue := v.(type) {
+				case string:
+					if cv.Value != nil && typedValue != cv.Value {
+						return nil, errorMessage(cv.Key, "value")
+					}
+					if cv.Length != nil && len(typedValue) != *cv.Length {
+						return nil, errorMessage(cv.Key, "length")
+					}
+					if cv.Type != nil && *cv.Type != "string" {
+						return nil, errorMessage(cv.Key, "type")
+					}
+					if cv.Contains != nil && strings.Contains(typedValue, fmt.Sprint(cv.Contains)) {
+						return nil, errorMessage(cv.Key, "contains")
+					}
+				case int, int8, int16, int32, int64, float32, float64:
+					if cv.Value != nil && typedValue != cv.Value {
+						return nil, errorMessage(cv.Key, "value")
+					}
+					if cv.Type != nil && *cv.Type != "number" {
+						return nil, errorMessage(cv.Key, "type")
+					}
+					//if cv.GreaterThan != nil && typedValue.(float64) <= (*cv.GreaterThan).(float64) {
+					//	return nil, errorMessage(cv.Key, "gt")
+					//}
+					//if cv.LessThan != nil && typedValue >= *cv.LessThan {
+					//	return nil, errorMessage(cv.Key, "lt")
+					//}
+				case []interface{}:
+					if cv.Length != nil && len(typedValue) != *cv.Length {
+						return nil, errorMessage(cv.Key, "length")
+					}
+					if cv.Type != nil && *cv.Type != "array" {
+						return nil, errorMessage(cv.Key, "type")
+					}
+					if cv.Contains != nil && !slices.Contains(typedValue, cv.Contains) {
+						return nil, errorMessage(cv.Key, "contains")
+					}
 				}
-				if cv.Length != nil && len(typedValue) != *cv.Length {
-					return nil, errorMessage(cv.Key, "length")
-				}
-				if cv.Type != nil && *cv.Type != "string" {
-					return nil, errorMessage(cv.Key, "type")
-				}
-				if cv.Contains != nil && strings.Contains(typedValue, fmt.Sprint(cv.Contains)) {
-					return nil, errorMessage(cv.Key, "contains")
-				}
-			case int, int8, int16, int32, int64, float32, float64:
-				if cv.Value != nil && typedValue != cv.Value {
-					return nil, errorMessage(cv.Key, "value")
-				}
-				if cv.Type != nil && *cv.Type != "number" {
-					return nil, errorMessage(cv.Key, "type")
-				}
-				//if cv.GreaterThan != nil && typedValue.(float64) <= (*cv.GreaterThan).(float64) {
-				//	return nil, errorMessage(cv.Key, "gt")
-				//}
-				//if cv.LessThan != nil && typedValue >= *cv.LessThan {
-				//	return nil, errorMessage(cv.Key, "lt")
-				//}
-			case []interface{}:
-				if cv.Length != nil && len(typedValue) != *cv.Length {
-					return nil, errorMessage(cv.Key, "length")
-				}
-				if cv.Type != nil && *cv.Type != "array" {
-					return nil, errorMessage(cv.Key, "type")
-				}
-				if cv.Contains != nil && !slices.Contains(typedValue, cv.Contains) {
-					return nil, errorMessage(cv.Key, "contains")
-				}
+			} else {
+				return nil, errorMessage(cv.Key, "not found")
 			}
-
 		}
 
 		bpi := &BearerProtectorInfo{protector: p, TokenClaims: tokenClaims, Token: token}
@@ -241,8 +244,8 @@ func getFromToken(key string, t map[string]interface{}) interface{} {
 	return nil
 }
 
-func errorMessage(key string, t string) error {
-	return fmt.Errorf("invalid claim for '%s' - %s", key, t)
+func errorMessage(key string, msg string) error {
+	return fmt.Errorf("invalid claim for '%s' - %s", key, msg)
 }
 
 func (b *BearerProtectorInfo) GetName() string {
