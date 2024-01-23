@@ -106,8 +106,7 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 	var (
 		token       *jwt.Token
 		tokenClaims = make(jwt.MapClaims)
-		typeOk      bool
-		kid         string
+		tokenId     string
 		err         error
 	)
 
@@ -117,10 +116,10 @@ func (p *BearerProtector) Validate(r *http.Request) (ProtectorInfo, error) {
 		if token == nil {
 			return nil, fmt.Errorf("no token")
 		}
-		if kid, typeOk = token.Header["kid"].(string); !typeOk {
-			return nil, fmt.Errorf("could not find 'kid' in token header")
+		if tokenId, err = bearerKeyManager.getTokenId(token.Header); err != nil {
+			return nil, fmt.Errorf("could not find valid token id in token header. %s", err)
 		}
-		if bearer, found := bearerKeyManager.getBearerForKid(kid); !found || bearer != p.Name {
+		if bearer, found := bearerKeyManager.getBearerForToken(tokenId); !found || bearer != p.Name {
 			// token is not for this BearerProtector - silently drop
 			return nil, nil
 		}

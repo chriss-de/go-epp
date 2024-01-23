@@ -39,18 +39,20 @@ type KeyFetch struct {
 }
 
 type BearerKeyManager struct {
-	kidKeysMap    map[string]*bearerSignKey // map with 'kid' to idx in keys for bearerSignKey
-	kidIdpMap     map[string]string
-	kidMapsLck    sync.RWMutex
+	tokenKeysMap  map[string]*bearerSignKey // map with 'kid' to idx in keys for bearerSignKey
+	tokenIdpMap   map[string]string
+	tokenMapsLck  sync.RWMutex
 	keyFetches    map[string]*KeyFetch
 	keyFetchesLck sync.Mutex
 }
 
+var idOrder = []string{"kid", "x5t"}
+
 func NewBearerKeyManager() *BearerKeyManager {
 	return &BearerKeyManager{
-		kidKeysMap: make(map[string]*bearerSignKey),
-		kidIdpMap:  make(map[string]string),
-		keyFetches: make(map[string]*KeyFetch),
+		tokenKeysMap: make(map[string]*bearerSignKey),
+		tokenIdpMap:  make(map[string]string),
+		keyFetches:   make(map[string]*KeyFetch),
 	}
 }
 
@@ -106,20 +108,20 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 	}
 
 	// create map
-	bkm.kidMapsLck.Lock()
+	bkm.tokenMapsLck.Lock()
 	for _, oldKey := range keyFetch.keys {
-		delete(bkm.kidKeysMap, oldKey.Kid)
+		delete(bkm.tokenKeysMap, oldKey.getID())
 	}
 
 	keyFetch.keys = make([]*bearerSignKey, len(newKeys.Keys))
 	for idx, key := range newKeys.Keys {
 		_key := key
 		_key.publicKey = getPublicKeyFromModulusAndExponent(_key.N, _key.E)
-		bkm.kidKeysMap[_key.Kid] = &_key
-		bkm.kidIdpMap[_key.Kid] = keyFetch.Name
+		bkm.tokenKeysMap[_key.getID()] = &_key
+		bkm.tokenIdpMap[_key.getID()] = keyFetch.Name
 		keyFetch.keys[idx] = &_key
 	}
-	bkm.kidMapsLck.Unlock()
+	bkm.tokenMapsLck.Unlock()
 
 	// queue fetch after interval - time.AfterFunc(k.Interval)
 	bkm.queueNewFetch(keyFetch)
@@ -129,45 +131,63 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 
 func (bkm *BearerKeyManager) queueNewFetch(k *KeyFetch) {
 	logger.Info("interval", k.Interval, "Queuing new fetch")
-	time.AfterFunc(k.Interval, func() {
-		if err := bkm.fetchKeys(k.Name); err != nil {
-			logger.Error(err)
-		}
-	})
+	go func() {
+		time.AfterFunc(k.Interval, func() {
+			if err := bkm.fetchKeys(k.Name); err != nil {
+				logger.Error(err)
+			}
+		})
+	}()
 }
 
-func (bkm *BearerKeyManager) getBearerForKid(kid string) (string, bool) {
-	bkm.kidMapsLck.RLock()
-	defer bkm.kidMapsLck.RUnlock()
-	k, o := bkm.kidIdpMap[kid]
+func (bkm *BearerKeyManager) getBearerForToken(id string) (string, bool) {
+	bkm.tokenMapsLck.RLock()
+	defer bkm.tokenMapsLck.RUnlock()
+	k, o := bkm.tokenIdpMap[id]
 	return k, o
+}
+
+func (bkm *BearerKeyManager) getTokenId(tokenHeader map[string]interface{}) (tokenId string, err error) {
+	var (
+		iTokenId interface{}
+		found    bool
+		castOk   bool
+	)
+
+	for _, idVal := range idOrder {
+		if iTokenId, found = tokenHeader[idVal]; found {
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("no valid token id found in header")
+	}
+
+	if tokenId, castOk = iTokenId.(string); !castOk {
+		return "", fmt.Errorf("could not parse '%v' to string as token id", iTokenId)
+	}
+
+	return tokenId, nil
 }
 
 // getSignatureKey returns public key to validate token signature
 func (bkm *BearerKeyManager) getSignatureKey(token *jwt.Token) (out interface{}, err error) {
 	var (
 		ok        bool
-		kid       string
-		x5t       string
+		tokenId   string
 		publicKey crypto.PublicKey
 		key       *bearerSignKey
 	)
 
-	if kid, ok = token.Header["kid"].(string); !ok {
-		return nil, fmt.Errorf("could not find 'kid' in token header")
+	if tokenId, err = bkm.getTokenId(token.Header); err != nil {
+		return nil, fmt.Errorf("could not find valid token id in token header. %s", err)
 	}
 
-	bkm.kidMapsLck.RLock()
-	if key, ok = bkm.kidKeysMap[kid]; !ok {
-		return nil, fmt.Errorf("could not find kid '%s' in local key cache. keys in cache: %d", kid, len(bkm.kidKeysMap))
+	bkm.tokenMapsLck.RLock()
+	if key, ok = bkm.tokenKeysMap[tokenId]; !ok {
+		return nil, fmt.Errorf("could not find tokenId '%s' in local key cache. keys in cache: %d", tokenId, len(bkm.tokenKeysMap))
 	}
-	bkm.kidMapsLck.RUnlock()
-
-	if x5t, ok = token.Header["x5t"].(string); ok {
-		if key.X5t != x5t {
-			return nil, fmt.Errorf("key mismatch at value 'x5t'")
-		}
-	}
+	bkm.tokenMapsLck.RUnlock()
 
 	publicKey = key.publicKey
 	if publicKey == nil {
@@ -190,4 +210,15 @@ func getPublicKeyFromModulusAndExponent(n, e string) *rsa.PublicKey {
 	buffer.Write(eBytes)
 	exponent := binary.BigEndian.Uint32(buffer.Bytes())
 	return &rsa.PublicKey{N: z, E: int(exponent)}
+}
+
+func (bsk *bearerSignKey) getID() string {
+	for _, idVal := range idOrder {
+		switch {
+		case idVal == "kid":
+			return bsk.Kid
+
+		}
+	}
+	return bsk.X5t
 }
