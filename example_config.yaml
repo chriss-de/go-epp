@@ -30,9 +30,15 @@ epp:
 #    - name: bearer
 #      type: bearer
 #      jwks_url: [issuer-url]/jwks.json
-#      claim_validation:
+      claims_validations:
+        - key: a.s.d
+          type: int | string | strs | ints
+          value: 123
+          length: 3
+          contains: "asd"
 #        issuer: 'value1'
 #        audience: 'value2'
+
 
   endpoints:
     - path: ...               # regex / optional

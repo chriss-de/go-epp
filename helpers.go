@@ -3,6 +3,7 @@ package epp
 import (
 	"context"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 )
 
@@ -87,6 +88,16 @@ func GetStringFromToken(ctx context.Context, key string) (string, error) {
 	return "", fmt.Errorf("no token in request")
 }
 
-//func GetStringsFromToken(ctx context.Context, key string) []string {
-//
-//}
+func GetClaimsFromToken(ctx context.Context) (jwt.MapClaims, error) {
+	epp, err := InfoFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range epp.Infos {
+		switch pbi := p.(type) {
+		case *BearerProtectorInfo:
+			return pbi.TokenClaims, nil
+		}
+	}
+	return nil, fmt.Errorf("no token in request")
+}
