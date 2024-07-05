@@ -134,7 +134,7 @@ func (bkm *BearerKeyManager) queueNewFetch(k *KeyFetch) {
 	go func() {
 		time.AfterFunc(k.Interval, func() {
 			if err := bkm.fetchKeys(k.Name); err != nil {
-				logger.Error(err)
+				logger.Error("fetch queue", "error", err)
 			}
 		})
 	}()

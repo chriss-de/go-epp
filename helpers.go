@@ -10,7 +10,7 @@ import (
 func HasACL(ctx context.Context, acl string) bool {
 	epp, err := InfoFromContext(ctx)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("InfoFromContext", "error", err)
 	}
 	if _, has := epp.ACLs[acl]; has {
 		return true
@@ -22,7 +22,7 @@ func HasACL(ctx context.Context, acl string) bool {
 func HasACLs(ctx context.Context, acls []string) bool {
 	epp, err := InfoFromContext(ctx)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("InfoFromContext", "error", err)
 	}
 	for _, acl := range acls {
 		if _, has := epp.ACLs[acl]; !has {

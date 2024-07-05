@@ -33,7 +33,7 @@ func Middleware(next http.Handler) http.Handler {
 							}
 						}
 					} else {
-						logger.Error(err)
+						logger.Error("middleware error", "error", err)
 					}
 				}
 			}

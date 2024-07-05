@@ -6,8 +6,8 @@ import (
 )
 
 type Logger interface {
-	Error(v ...interface{})
-	Info(v ...interface{})
+	Error(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
 }
 
 type DefaultLogger struct{}
@@ -26,10 +26,10 @@ func (l *DefaultLogger) parseLog(v ...interface{}) string {
 	return fmt.Sprint(message, "  [", paramLogs, "]\n")
 }
 
-func (l *DefaultLogger) Error(v ...interface{}) {
-	_, _ = fmt.Fprint(os.Stderr, "ERR: ", l.parseLog(v...))
+func (l *DefaultLogger) Error(msg string, args ...interface{}) {
+	_, _ = fmt.Fprint(os.Stderr, "ERR: "+msg, l.parseLog(args...))
 }
 
-func (l *DefaultLogger) Info(v ...interface{}) {
-	_, _ = fmt.Fprint(os.Stdout, "INF: ", l.parseLog(v...))
+func (l *DefaultLogger) Info(msg string, args ...interface{}) {
+	_, _ = fmt.Fprint(os.Stdout, "INF: "+msg, l.parseLog(args...))
 }
