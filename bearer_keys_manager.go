@@ -130,7 +130,7 @@ func (bkm *BearerKeyManager) fetchKeys(name string) (err error) {
 }
 
 func (bkm *BearerKeyManager) queueNewFetch(k *KeyFetch) {
-	logger.Info("interval", k.Interval, "Queuing new fetch")
+	logger.Info("Queuing new fetch", "interval", k.Interval.String())
 	go func() {
 		time.AfterFunc(k.Interval, func() {
 			if err := bkm.fetchKeys(k.Name); err != nil {
